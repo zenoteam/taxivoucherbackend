@@ -12,7 +12,7 @@ if __name__ == '__main__':
         # Create some test data
         test_data = [
             # for promo service
-            ( 0.5, datetime.now(), datetime.now()),
+            ( 0.2, datetime.now(), datetime.now()),
         ]
         for discountPercent, timestamp, updateTimeStamp in test_data:
             discount = DiscountModel(
