@@ -173,7 +173,7 @@ filterParser.add_argument(
     type=int,
     choices=(1, 2),
     location='args',
-    help='Filter by status of the voucher'
+    help='Filter by status of the voucher, 1-> Not Used, 2-> Used'
 )
 filterParser.add_argument(
     'userPhoneNumber',
@@ -296,7 +296,7 @@ class VoucherPost(Resource):
         data = {
             "amount": amountBought,
             "phoneNo": args["driverPhoneNumber"],
-            "desc": "Voucher Purchase"
+            "desc": "Voucher Purchase By Driver"
         }
         url = WALLET_SERVICE + "api/purchaseVoucher/"
         print(url)
@@ -339,9 +339,10 @@ class VoucherGetById(Resource):
 
         return voucher
 
+@api.route('/vouchers/buy/<int:voucherId>/')
+class VoucherSell(Resource):
     @api.doc('update_voucher')
     @api.expect(updateVoucherParser)
-    @api.marshal_with(voucherModel, code=http.client.OK)
     def put(self, voucherId: int):
         """
         Sell Voucher to Riders
@@ -358,10 +359,13 @@ class VoucherGetById(Resource):
 
         if not voucher:
             # The voucher does not exist
-            return '', http.client.NOT_FOUND
+            return {"status" :"error", "message": "Not Found"}, http.client.NOT_FOUND
 
         # to check if status has changed
         oldStatus = voucher.status
+        
+        if voucher.status == 2:
+            return {"status" :"error", "message": "Voucher Sold"}, http.client.OK
 
         # add voucher
         
@@ -372,7 +376,7 @@ class VoucherGetById(Resource):
         data = {
             "amount": voucher.voucherWorth,
             "phoneNo": args['userPhoneNumber'],
-            "desc": "Voucher Purchase"
+            "desc": "Voucher Purchase By Rider"
         }
         url = WALLET_SERVICE + "api/topupwallet/"
         res = requests.post(headers=headers, data=data, url=url)
@@ -392,60 +396,25 @@ class VoucherGetById(Resource):
         return result, http.client.OK
 
 
-@api.route('/vouchers/<string:voucherPin>/')
-class VoucherGetByPin(Resource):
-    @api.doc('retrieve voucher with pin')
+@api.route('/me/')
+class VoucherGetByAuth(Resource):
+    @api.doc('retrieve voucher with auth id')
     @api.marshal_with(voucherModel)
     @api.expect(authenticationParser)
-    def get(self, voucherPin: str):
+    def get(self):
         """
-        Retrieve a specific voucher using pin
+        Retrieve a specific voucher using auth id
         """
         args = authenticationParser.parse_args()
-        authentication_header_parser(args['Authorization'])
+        auth_id = authentication_header_parser(args['Authorization'])['auth_id']
 
-        voucher = VoucherModel.query.filter(VoucherModel.pin==voucherPin).first()
-        if not voucher:
+        vouchers = VoucherModel.query.filter(VoucherModel.driverId==auth_id).all()
+        if not vouchers:
             # The voucher does not exist
             return '', http.client.NOT_FOUND
 
-        return voucher
+        return list(vouchers)
 
-    @api.doc('update_voucher')
-    @api.expect(updateVoucherParser)
-    @api.marshal_with(voucherModel, code=http.client.OK)
-    def put(self, voucherPin: int):
-        """
-        Update voucher when used using pin.
-        """
-
-        # authenticate bearer token
-        check_admin_return_payload(updateVoucherParser)
-
-        args = updateVoucherParser.parse_args()
-
-        # todo: ask if only creators can update voucher
-
-        voucher = VoucherModel.query.filter(VoucherModel.pin==voucherPin).first()
-
-        if not voucher:
-            # The voucher does not exist
-            return '', http.client.NOT_FOUND
-
-        # to check if status has changed
-        oldStatus = voucher.status
-
-        # add voucher
-       
-        voucher.status = 2
-        voucher.userPhoneNumber = args['userPhoneNumber'] or voucher.userPhoneNumber
-        voucher.dateUsed = datetime.now() or voucher.dateUsed
-
-        db.session.add(voucher)
-        db.session.commit()
-
-        result = api.marshal(voucher, voucherModel)
-        return result, http.client.OK  
 
 @api.route('/vouchers/<string:voucherPin>/')
 class VoucherGetByPin(Resource):
