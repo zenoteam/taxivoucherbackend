@@ -1,14 +1,15 @@
 import http.client
 import os
 from datetime import datetime, timedelta
-from flask import abort
-from flask_restplus import Namespace, Resource, fields
-
-
 from uuid import uuid4
 import random
 import string
+
+
+from flask import abort
+from flask_restplus import Namespace, Resource, fields
 import requests
+from sqlalchemy import func
 
 from voucher_backend import config
 from voucher_backend.db import db
@@ -275,17 +276,16 @@ class VoucherPost(Resource):
         """
 
         # authenticate bearer token
-        tokenPayload = check_admin_return_payload(voucherParser)
-        auth_id = tokenPayload['auth_id']
         args = voucherParser.parse_args()
-        authentication_header_parser(args['Authorization'])
+        tokenPayload = authentication_header_parser(args['Authorization'])
+        auth_id = tokenPayload['auth_id']
         
         pin = generate_pin()
         
         discount = DiscountModel.query.get(1).discountPercent
         
         if not args["amountBought"]:
-            amountBought = int(discount * args["voucherWorth"])
+            amountBought = int( (1- discount) * args["voucherWorth"])
         else:
             amountBought = args["amountBought"]
             
@@ -339,30 +339,29 @@ class VoucherGetById(Resource):
 
         return voucher
 
-@api.route('/vouchers/buy/<int:voucherId>/')
+@api.route('/vouchers/buy/<string:voucherPin>/')
 class VoucherSell(Resource):
     @api.doc('update_voucher')
     @api.expect(updateVoucherParser)
-    def put(self, voucherId: int):
+    def put(self, voucherPin: str):
         """
         Sell Voucher to Riders
         """
 
         # authenticate bearer token
-        check_admin_return_payload(updateVoucherParser)
 
         args = updateVoucherParser.parse_args()
+        
+        auth_id = authentication_header_parser(args['Authorization'])['auth_id']
 
         # todo: ask if only creators can update voucher
 
-        voucher = VoucherModel.query.get(voucherId)
+        voucher = VoucherModel.query.filter(VoucherModel.pin==voucherPin).first()
 
         if not voucher:
             # The voucher does not exist
             return {"status" :"error", "message": "Not Found"}, http.client.NOT_FOUND
 
-        # to check if status has changed
-        oldStatus = voucher.status
         
         if voucher.status == 2:
             return {"status" :"error", "message": "Voucher Sold"}, http.client.OK
@@ -416,7 +415,7 @@ class VoucherGetByAuth(Resource):
         return list(vouchers)
 
 
-@api.route('/vouchers/<string:voucherPin>/')
+@api.route('/vouchers/pin/<string:voucherPin>/')
 class VoucherGetByPin(Resource):
     @api.doc('retrieve voucher with pin')
     @api.marshal_with(voucherModel)
